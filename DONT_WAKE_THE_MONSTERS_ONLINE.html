@@ -1,0 +1,2322 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>DON'T WAKE THE MONSTER! - 3D First Person</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Creepster&display=swap" rel="stylesheet">
+  
+  <style>
+    * {
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body {
+      font-family: 'Chakra Petch', sans-serif;
+      background-color: #050508;
+      overflow: hidden;
+    }
+    .horror-font {
+      font-family: 'Creepster', cursive;
+    }
+    .crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 8px;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.6);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
+      z-index: 10;
+    }
+    .vignette {
+      position: absolute;
+      inset: 0;
+      box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.85);
+      pointer-events: none;
+      z-index: 5;
+    }
+    .jumpscare-shake {
+      animation: jumpscare-anim 0.08s infinite alternate ease-in-out;
+    }
+    @keyframes jumpscare-anim {
+      0% { transform: scale(1.1) translate(-12px, -8px) rotate(-2deg); }
+      50% { transform: scale(1.25) translate(14px, 10px) rotate(3deg); }
+      100% { transform: scale(1.15) translate(-10px, 12px) rotate(-1deg); }
+    }
+    .glitch-flash {
+      animation: flash-anim 0.12s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+    }
+    @keyframes flash-anim {
+      0%, 100% { background: rgba(220, 20, 20, 0.65); }
+      50% { background: rgba(5, 0, 0, 0.95); }
+    }
+    .vignette-pulse-danger {
+      box-shadow: inset 0 0 90px rgba(220, 38, 38, 0.45) !important;
+      transition: box-shadow 0.15s ease-out;
+    }
+    .vignette-pulse-escape {
+      box-shadow: inset 0 0 90px rgba(16, 185, 129, 0.4) !important;
+      transition: box-shadow 0.25s ease-out;
+    }
+    .ecg-grid {
+      background-size: 8px 8px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    }
+  </style>
+</head>
+<body class="relative w-screen h-screen m-0 p-0 text-white select-none">
+
+  <!-- 3D WebGL Canvas Container -->
+  <div id="canvas-container" class="absolute inset-0 w-full h-full"></div>
+
+  <!-- Horror Atmosphere Vignette -->
+  <div id="vignette-fx" class="vignette"></div>
+
+  <!-- In-game Crosshair -->
+  <div id="crosshair" class="crosshair"></div>
+
+  <!-- Terrifying Jumpscare Overlay -->
+  <div id="jumpscare-overlay" class="hidden absolute inset-0 z-50 flex items-center justify-center bg-black overflow-hidden pointer-events-none select-none">
+    <div id="jumpscare-blood" class="absolute inset-0 bg-red-950/70 mix-blend-multiply"></div>
+    <div id="jumpscare-face-container" class="relative z-10 flex flex-col items-center justify-center jumpscare-shake">
+      <!-- Dynamic Jumpscare Face -->
+      <div id="jumpscare-svg-holder">
+        <svg class="w-80 h-96 sm:w-[32rem] sm:h-[38rem] drop-shadow-[0_0_45px_rgba(255,0,0,0.95)]" viewBox="0 0 300 360" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <g stroke="#050505" stroke-width="1.8" stroke-linecap="round" opacity="0.95">
+            <path d="M150 160 Q130 50 148 5 Q165 45 150 160 Z" fill="#09090b" />
+            <path d="M130 170 Q90 60 110 8 Q135 60 130 170 Z" fill="#09090b" />
+            <path d="M170 170 Q210 60 190 8 Q165 60 170 170 Z" fill="#09090b" />
+            <path d="M110 180 Q60 80 80 18 Q115 80 110 180 Z" fill="#09090b" />
+            <path d="M190 180 Q240 80 220 18 Q185 80 190 180 Z" fill="#09090b" />
+            <path d="M150 150 C120 70 100 30 130 2 M150 150 C170 60 190 30 165 3 M140 160 C100 80 70 40 95 10 M160 160 C200 80 230 40 205 10"/>
+            <path d="M125 170 C80 90 50 50 70 20 M175 170 C220 90 250 50 230 20 M115 175 C60 110 35 70 50 35 M185 175 C240 110 265 70 250 35"/>
+          </g>
+          <path d="M80 360 C80 285 110 265 125 260 L175 260 C190 265 220 285 220 360 Z" fill="#09090b" stroke="#18181b" stroke-width="2"/>
+          <path d="M132 215 L128 260 L172 260 L168 215 Z" fill="#18181b" stroke="#000" stroke-width="1.5"/>
+          <path d="M112 185 C110 150 125 140 150 140 C175 140 190 150 188 185 C186 215 168 228 150 228 C132 228 114 215 112 185 Z" fill="#212024" stroke="#050505" stroke-width="2.5"/>
+          <ellipse cx="134" cy="172" rx="14" ry="15" fill="#f8fafc" stroke="#000" stroke-width="2"/>
+          <circle cx="134" cy="172" r="7" fill="none" stroke="#dc2626" stroke-width="1.5"/>
+          <circle cx="134" cy="172" r="3.2" fill="#000"/>
+          <ellipse cx="166" cy="172" rx="14" ry="15" fill="#f8fafc" stroke="#000" stroke-width="2"/>
+          <circle cx="166" cy="172" r="7" fill="none" stroke="#dc2626" stroke-width="1.5"/>
+          <circle cx="166" cy="172" r="3.2" fill="#000"/>
+          <ellipse cx="150" cy="204" rx="17" ry="11" fill="#020202" stroke="#000" stroke-width="2"/>
+          <rect x="144" y="196" width="3.5" height="7.5" fill="#f1f5f9"/>
+          <rect x="148" y="196" width="4" height="7.5" fill="#f1f5f9"/>
+        </svg>
+      </div>
+      <h1 class="horror-font text-5xl sm:text-7xl font-black text-red-600 tracking-widest mt-2 uppercase drop-shadow-[0_5px_15px_rgba(255,0,0,0.8)]">
+        I SEE YOU!
+      </h1>
+    </div>
+  </div>
+
+  <!-- In-Game Status HUD (Top Screen) -->
+  <header id="game-hud" class="hidden absolute top-3 left-3 right-3 flex flex-wrap justify-between items-center gap-2 pointer-events-none z-20">
+    <div class="flex items-center gap-2 sm:gap-3">
+      <!-- Orbs HUD -->
+      <div id="hud-orbs-box" class="flex items-center gap-1.5 bg-neutral-900/85 border border-amber-600/40 backdrop-blur px-3 py-1.5 rounded-xl shadow-lg transition-all duration-300">
+        <span class="text-amber-400 font-bold text-xs sm:text-sm">🔮 ลูกแก้ว:</span>
+        <span id="hud-orbs" class="text-white font-mono text-sm sm:text-base font-bold">0 / 5</span>
+      </div>
+
+      <!-- Flashlight Battery HUD -->
+      <div class="flex items-center gap-2 bg-neutral-900/85 border border-yellow-600/50 backdrop-blur px-3 py-1.5 rounded-xl shadow-lg">
+        <span id="battery-icon" class="text-xs sm:text-sm">🔦</span>
+        <div class="w-16 sm:w-24 h-2.5 bg-neutral-800 rounded-full overflow-hidden border border-neutral-700">
+          <div id="battery-bar" class="h-full bg-gradient-to-r from-emerald-500 to-green-400 transition-all duration-200" style="width: 100%"></div>
+        </div>
+        <span id="battery-text" class="text-[10px] sm:text-xs font-mono font-bold text-yellow-300">100%</span>
+      </div>
+    </div>
+
+    <!-- Exit Door Compass / GPS Tracker (Appears when all 5 orbs are gathered) -->
+    <div id="hud-exit-tracker" class="hidden flex items-center gap-2 bg-emerald-950/95 border-2 border-emerald-400 px-3 py-1.5 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.7)] animate-bounce">
+      <span class="text-emerald-300 text-xs sm:text-sm font-black">🚪 ทางหนี:</span>
+      <span id="exit-compass-arrow" class="inline-block text-emerald-200 font-black text-base transform transition-transform duration-100">⬆</span>
+      <span id="exit-dist-text" class="text-emerald-300 font-mono text-xs sm:text-sm font-black">25m</span>
+    </div>
+
+    <!-- Battery Emergency Radar / Nearest Indicator -->
+    <div id="hud-battery-finder" class="hidden flex items-center gap-2 bg-emerald-950/90 border border-emerald-500/80 px-3 py-1.5 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.35)] animate-pulse">
+      <span class="text-emerald-400 text-xs sm:text-sm font-bold">🧭 ถ่านใกล้สุด:</span>
+      <span id="battery-compass-arrow" class="inline-block text-emerald-300 font-bold text-sm transform transition-transform duration-100">⬆</span>
+      <span id="battery-dist-text" class="text-emerald-300 font-mono text-xs sm:text-sm font-bold">12m</span>
+    </div>
+
+    <!-- Danger / Dynamic ECG Heart-Rate Monitor & Timer -->
+    <div class="flex items-center gap-2 sm:gap-3">
+      <div id="hud-heartbeat" class="flex items-center gap-2 bg-neutral-950/90 border border-emerald-900/60 px-2.5 py-1.5 rounded-xl shadow-2xl backdrop-blur transition-colors duration-300">
+        <div class="flex flex-col items-start leading-tight">
+          <div class="flex items-center gap-1.5">
+            <span id="heart-icon" class="text-red-500 text-xs sm:text-sm animate-pulse">❤️</span>
+            <span id="bpm-text" class="font-mono text-xs sm:text-sm font-black text-emerald-400">72</span>
+            <span class="text-[8px] sm:text-[9px] text-neutral-400 font-bold uppercase">BPM</span>
+          </div>
+          <span id="hud-status" class="text-[9px] sm:text-[10px] font-semibold text-emerald-400 whitespace-nowrap">ปกติ</span>
+        </div>
+
+        <div class="relative w-24 sm:w-32 h-7 sm:h-8 bg-black/80 rounded-lg border border-neutral-800/80 overflow-hidden ecg-grid flex items-center">
+          <canvas id="ecg-canvas" width="130" height="32" class="w-full h-full block"></canvas>
+          <div id="ecg-glow-indicator" class="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></div>
+        </div>
+      </div>
+
+      <div class="bg-neutral-900/85 border border-neutral-800 px-2.5 py-1.5 rounded-xl text-xs text-neutral-300 font-mono">
+        ⏱ <span id="hud-timer" class="text-emerald-400 font-bold">00:00</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Big Dramatic Announcement Banner for Exit Door Appearing -->
+  <div id="exit-unlocked-banner" class="hidden absolute top-24 left-1/2 -translate-x-1/2 bg-gradient-to-r from-emerald-950 via-green-900 to-emerald-950 border-2 border-emerald-400 text-white px-6 py-3 rounded-2xl shadow-[0_0_35px_rgba(16,185,129,0.85)] pointer-events-none z-30 flex flex-col items-center gap-1 animate-pulse text-center">
+    <div class="flex items-center gap-2">
+      <span class="text-2xl animate-bounce">🚪✨</span>
+      <span class="horror-font text-2xl sm:text-3xl font-extrabold text-emerald-300 tracking-wider">DOOR UNLOCKED!</span>
+      <span class="text-2xl animate-bounce">✨🚪</span>
+    </div>
+    <p class="text-xs sm:text-sm font-bold text-emerald-100">
+      ประตูทางหนีได้ปรากฏขึ้นแล้ว! ตามแสงเขียวและเข็มทิศด้านบนเพื่อหนีออกไปด่วน!
+    </p>
+  </div>
+
+  <!-- Interactive Hint Banner -->
+  <div id="interaction-hint" class="hidden absolute bottom-28 left-1/2 -translate-x-1/2 bg-neutral-900/90 border border-amber-500 text-amber-300 px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold tracking-wide shadow-lg pointer-events-none z-20 animate-bounce">
+    ✦ เข้าใกล้ไอเทมแล้ว!
+  </div>
+
+  <!-- Emergency Darkness Alert & Guide -->
+  <div id="emergency-alert" class="hidden absolute top-20 left-1/2 -translate-x-1/2 bg-red-950/90 border-2 border-red-500 text-red-200 px-4 py-2 rounded-2xl text-xs sm:text-sm font-bold tracking-wide shadow-[0_0_25px_rgba(239,68,68,0.7)] pointer-events-none z-20 flex flex-col items-center gap-1 animate-bounce text-center">
+    <div class="flex items-center gap-2">
+      <span class="text-lg">⚠️</span>
+      <span class="text-red-300 font-bold">ถ่านหมดแล้ว! กด [E] จุดไฟแช็กฉุกเฉิน</span>
+    </div>
+    <span class="text-[10px] sm:text-xs text-emerald-400 font-normal">ฟังเสียงเรดาร์บี๊บ 🔊 และมองเข็มทิศเขียวด้านบนเพื่อหาถ่าน!</span>
+  </div>
+
+  <!-- On-Screen Action Buttons (PC & Mobile Quick Access) -->
+  <div id="quick-action-bar" class="hidden absolute bottom-5 right-5 z-20 flex gap-2.5">
+    <button id="btn-emergency-lighter" class="hidden flex flex-col items-center justify-center w-14 h-14 bg-amber-950/90 hover:bg-amber-900 border-2 border-amber-500 text-amber-300 rounded-2xl shadow-xl active:scale-95 transition pointer-events-auto animate-pulse">
+      <span class="text-lg">🔥</span>
+      <span class="text-[9px] font-bold">ไฟแช็ก [E]</span>
+    </button>
+    <button id="btn-toggle-light" class="flex flex-col items-center justify-center w-14 h-14 bg-neutral-900/90 hover:bg-neutral-800 border-2 border-yellow-500/70 text-yellow-300 rounded-2xl shadow-xl active:scale-95 transition pointer-events-auto">
+      <span class="text-lg">🔦</span>
+      <span class="text-[9px] font-bold">ไฟฉาย [F]</span>
+    </button>
+  </div>
+
+  <!-- Online Multiplayer Lobby -->
+  <section id="screen-online" class="hidden absolute inset-0 bg-neutral-950/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-35">
+    <div class="max-w-md w-full bg-neutral-900/95 border border-red-900/60 rounded-3xl p-6 shadow-2xl space-y-4">
+      <div class="text-4xl">👥</div>
+      <h2 class="horror-font text-3xl font-extrabold text-red-500">เล่นกับเพื่อน</h2>
+      <p class="text-neutral-400 text-sm">สร้างห้องแล้วส่งรหัส 6 ตัวให้เพื่อน หรือกรอกรหัสของเพื่อน</p>
+      <input id="online-name" maxlength="18" placeholder="ชื่อผู้เล่น" class="w-full px-4 py-3 rounded-xl bg-black/60 border border-neutral-700 text-white outline-none focus:border-red-500">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <button id="btn-create-room" class="py-3 rounded-xl bg-red-700 hover:bg-red-600 font-bold">สร้างห้อง</button>
+        <button id="btn-show-join" class="py-3 rounded-xl bg-neutral-700 hover:bg-neutral-600 font-bold">เข้าห้อง</button>
+      </div>
+      <div id="join-box" class="hidden space-y-2">
+        <input id="room-code-input" maxlength="6" placeholder="รหัสห้อง เช่น A7K2PQ" class="w-full px-4 py-3 rounded-xl bg-black/60 border border-neutral-700 text-center text-xl tracking-[0.35em] uppercase">
+        <button id="btn-join-room" class="w-full py-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 font-bold">เข้าห้อง</button>
+      </div>
+      <div id="room-info" class="hidden bg-black/50 border border-neutral-800 rounded-2xl p-4 space-y-2">
+        <div class="text-xs text-neutral-400">รหัสเชิญเพื่อน</div>
+        <div id="room-code-display" class="text-4xl font-black tracking-[0.25em] text-amber-400"></div>
+        <div id="room-status" class="text-sm text-neutral-300"></div>
+        <div id="room-players" class="text-xs text-neutral-400"></div>
+        <button id="btn-online-start" class="hidden w-full py-3 rounded-xl bg-red-700 hover:bg-red-600 font-bold">เริ่มเกม</button>
+      </div>
+      <div id="online-error" class="hidden text-sm text-red-400"></div>
+      <button id="btn-online-back" class="w-full py-2 text-neutral-400 hover:text-white">← กลับ</button>
+    </div>
+  </section>
+
+  <!-- Screen: Start Menu Overlay -->
+  <section id="screen-start" class="absolute inset-0 bg-neutral-950/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-30">
+    <div class="max-w-md w-full bg-neutral-900/95 border border-red-900/60 rounded-3xl p-5 sm:p-7 shadow-2xl space-y-4 text-center">
+      <div class="inline-block p-3 bg-red-950/70 border border-red-800/80 rounded-2xl text-4xl shadow-inner animate-pulse">
+        👁️
+      </div>
+      <h1 class="horror-font text-3xl sm:text-4xl font-extrabold text-red-500 tracking-wider">
+        DON'T WAKE THE MONSTERS!
+      </h1>
+      <p class="text-neutral-300 text-xs sm:text-sm leading-relaxed">
+        ภารกิจ: รวบรวมลูกแก้ววิญญาณให้ครบทั้ง <span class="text-amber-400 font-bold">5 ลูก</span> เพื่อปลดผนึกให้ <span class="text-emerald-400 font-bold">"ประตูทางหนีปรากฏขึ้น"</span>! ระวังผีร้ายทั้ง 4 ตน รวมถึง <span class="text-amber-400 font-bold">ผีนางรำ</span> และ <span class="text-rose-400 font-bold">The Hair Spectre</span>!
+      </p>
+
+      <div class="bg-black/50 p-3 rounded-xl border border-neutral-800 text-left text-xs text-neutral-300 space-y-1.5">
+        <p><span class="text-amber-400 font-bold">🎮 คอมพิวเตอร์:</span> คลิกจอเพื่อหัน, <kbd class="px-1 bg-neutral-800 rounded">W</kbd><kbd class="px-1 bg-neutral-800 rounded">A</kbd><kbd class="px-1 bg-neutral-800 rounded">S</kbd><kbd class="px-1 bg-neutral-800 rounded">D</kbd> เดิน, <kbd class="px-1 bg-neutral-800 rounded text-yellow-300 font-bold">F</kbd> เปิด/ปิดไฟฉาย, <kbd class="px-1 bg-neutral-800 rounded text-amber-400 font-bold">E</kbd> จุดไฟแช็กฉุกเฉิน</p>
+        <p><span class="text-amber-400 font-bold">📱 มือถือ:</span> แท่นจอยซ้ายเดิน, ขวาหัน, ปุ่ม 🔦 เปิดไฟ, ปุ่ม 🔥 จุดไฟแช็กเมื่อถ่านหมด</p>
+      </div>
+
+      <div class="grid grid-cols-1 gap-2">
+        <button id="btn-start" class="w-full py-3.5 px-6 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 active:scale-95 text-white font-bold rounded-2xl shadow-xl transition transform duration-150 text-base tracking-wide border border-red-500/40">
+          เข้าสู่บ้านผีสิง (เล่นคนเดียว)
+        </button>
+        <button id="btn-online" class="w-full py-3.5 px-6 bg-gradient-to-r from-indigo-700 via-purple-700 to-indigo-800 hover:from-indigo-600 hover:to-purple-600 active:scale-95 text-white font-bold rounded-2xl shadow-xl transition transform duration-150 text-base tracking-wide border border-indigo-400/30">
+          👥 เล่นออนไลน์กับเพื่อน
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Screen: Game Over -->
+  <section id="screen-gameover" class="hidden absolute inset-0 bg-black/95 flex flex-col items-center justify-center p-6 text-center z-40">
+    <div class="max-w-sm w-full bg-neutral-950 border-2 border-red-700 rounded-3xl p-6 shadow-2xl space-y-4">
+      <div class="text-6xl animate-bounce">💀</div>
+      <h2 class="horror-font text-4xl font-extrabold text-red-600 tracking-wider">YOU WERE CAUGHT!</h2>
+      <p id="gameover-desc" class="text-neutral-400 text-xs sm:text-sm">
+        ผีจับตัวคุณได้สำเร็จท่ามกลางความมืดมิด! คุณกลายเป็นเหยื่อรายต่อไป...
+      </p>
+      <button id="btn-retry" class="w-full py-3 px-6 bg-red-600 hover:bg-red-500 active:scale-95 text-white font-bold rounded-xl shadow-lg transition">
+        ลองใหม่อีกครั้ง
+      </button>
+    </div>
+  </section>
+
+  <!-- Screen: Victory Screen -->
+  <section id="screen-victory" class="hidden absolute inset-0 bg-emerald-950/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-40">
+    <div class="max-w-sm w-full bg-neutral-900 border-2 border-emerald-600 rounded-3xl p-6 shadow-2xl space-y-4">
+      <div class="text-6xl animate-pulse">🏆</div>
+      <h2 class="horror-font text-3xl font-extrabold text-emerald-400 tracking-wider">ESCAPED SAFELY!</h2>
+      <p class="text-neutral-300 text-xs sm:text-sm">
+        คุณรวบรวมลูกแก้วโบราณครบ 5 ลูก ปลดผนึกประตูทางหนี และรอดชีวิตออกจากบ้านผีสิงได้สำเร็จ!
+      </p>
+      <div class="bg-neutral-950 p-3 rounded-xl border border-neutral-800 text-sm text-neutral-300">
+        เวลาที่ใช้: <span id="victory-time" class="font-bold text-emerald-400 font-mono text-base">00:00</span>
+      </div>
+      <button id="btn-restart" class="w-full py-3 px-6 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold rounded-xl shadow-lg transition">
+        เล่นใหม่อีกครั้ง
+      </button>
+    </div>
+  </section>
+
+  <!-- Mobile Touch Controls -->
+  <div id="mobile-controls" class="sm:hidden absolute inset-0 pointer-events-none z-20 flex justify-between p-4 items-end pb-8">
+    <div class="relative w-28 h-28 bg-white/5 border-2 border-white/20 rounded-full pointer-events-auto flex items-center justify-center backdrop-blur-sm" id="touch-move-zone">
+      <div id="touch-move-knob" class="w-10 h-10 bg-white/30 rounded-full shadow border border-white/50"></div>
+      <span class="absolute text-[10px] text-white/50 bottom-1">เดิน</span>
+    </div>
+
+    <div class="w-28 h-28 bg-white/5 border-2 border-dashed border-white/20 rounded-2xl pointer-events-auto flex flex-col items-center justify-center backdrop-blur-sm mr-16" id="touch-look-zone">
+      <span class="text-xl opacity-60">👀</span>
+      <span class="text-[9px] text-white/60 text-center px-1">ลากเพื่อหัน</span>
+    </div>
+  </div>
+
+  <script>
+    class HorrorAudio {
+      constructor() {
+        this.ctx = null;
+        this.chaseMusicPlaying = false;
+        this.chaseGain = null;
+        this.chaseInterval = null;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+        if (!this.chaseGain && this.ctx) {
+          this.chaseGain = this.ctx.createGain();
+          this.chaseGain.gain.setValueAtTime(0.001, this.ctx.currentTime);
+          this.chaseGain.connect(this.ctx.destination);
+        }
+      }
+      playDrone() {
+        if (!this.ctx) return;
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(55, this.ctx.currentTime);
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(110, this.ctx.currentTime);
+          gain.gain.setValueAtTime(0.06, this.ctx.currentTime);
+
+          osc.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+        } catch(e) {}
+      }
+
+      updateChaseMusic(isAlerted, proximity) {
+        if (!this.ctx || !this.chaseGain) return;
+        if (isAlerted || proximity > 0.45) {
+          if (!this.chaseMusicPlaying) {
+            this.startChaseMusicLoop();
+          }
+          const targetVol = isAlerted ? 0.38 : (proximity * 0.25);
+          this.chaseGain.gain.setTargetAtTime(targetVol, this.ctx.currentTime, 0.2);
+        } else {
+          if (this.chaseMusicPlaying) {
+            this.chaseGain.gain.setTargetAtTime(0.001, this.ctx.currentTime, 0.5);
+            if (proximity < 0.15) {
+              this.stopChaseMusicLoop();
+            }
+          }
+        }
+      }
+
+      startChaseMusicLoop() {
+        this.chaseMusicPlaying = true;
+        if (this.chaseInterval) clearInterval(this.chaseInterval);
+
+        let step = 0;
+        this.chaseInterval = setInterval(() => {
+          if (!this.ctx || !this.chaseMusicPlaying) return;
+          const now = this.ctx.currentTime;
+          step++;
+
+          const stabOsc = this.ctx.createOscillator();
+          const stabFilter = this.ctx.createBiquadFilter();
+          const stabGain = this.ctx.createGain();
+
+          stabOsc.type = 'sawtooth';
+          const notes = [740, 1046, 880, 1174, 698];
+          stabOsc.frequency.setValueAtTime(notes[step % notes.length], now);
+
+          stabFilter.type = 'highpass';
+          stabFilter.frequency.setValueAtTime(1200, now);
+
+          stabGain.gain.setValueAtTime(0.35, now);
+          stabGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+          stabOsc.connect(stabFilter);
+          stabFilter.connect(stabGain);
+          stabGain.connect(this.chaseGain);
+
+          stabOsc.start(now);
+          stabOsc.stop(now + 0.2);
+
+          if (step % 2 === 0) {
+            const bassOsc = this.ctx.createOscillator();
+            const bassGain = this.ctx.createGain();
+            bassOsc.type = 'triangle';
+            bassOsc.frequency.setValueAtTime(65, now);
+            bassOsc.frequency.exponentialRampToValueAtTime(35, now + 0.25);
+            bassGain.gain.setValueAtTime(0.5, now);
+            bassGain.gain.exponentialRampToValueAtTime(0.01, now + 0.28);
+            bassOsc.connect(bassGain);
+            bassGain.connect(this.chaseGain);
+            bassOsc.start(now);
+            bassOsc.stop(now + 0.3);
+          }
+        }, 220);
+      }
+
+      stopChaseMusicLoop() {
+        this.chaseMusicPlaying = false;
+        if (this.chaseInterval) {
+          clearInterval(this.chaseInterval);
+          this.chaseInterval = null;
+        }
+      }
+
+      playPickup() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, now);
+        osc.frequency.exponentialRampToValueAtTime(1174.66, now + 0.25);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.25);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.26);
+      }
+
+      playBatteryPickup() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.18);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.2);
+      }
+
+      playLighterFlick() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(1200, now);
+        osc.frequency.exponentialRampToValueAtTime(300, now + 0.08);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.09);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.1);
+      }
+
+      playRadarSonarPing(distance) {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const freq = Math.max(600, Math.min(1800, 1800 - distance * 50));
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now);
+        osc.frequency.exponentialRampToValueAtTime(freq * 1.2, now + 0.12);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.16);
+      }
+
+      playSwitch() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(900, now);
+        osc.frequency.setValueAtTime(300, now + 0.03);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.06);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.07);
+      }
+
+      playHeartbeat() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(80, now);
+        osc.frequency.exponentialRampToValueAtTime(30, now + 0.12);
+        gain.gain.setValueAtTime(0.35, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.15);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.16);
+      }
+
+      playThaiGhostSound() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const piOsc = this.ctx.createOscillator();
+        const piGain = this.ctx.createGain();
+        const piFilter = this.ctx.createBiquadFilter();
+
+        piOsc.type = 'sawtooth';
+        piFilter.type = 'bandpass';
+        piFilter.frequency.setValueAtTime(620, now);
+        piFilter.Q.setValueAtTime(4.0, now);
+
+        piOsc.frequency.setValueAtTime(490, now);
+        piOsc.frequency.exponentialRampToValueAtTime(740, now + 0.25);
+        piOsc.frequency.exponentialRampToValueAtTime(430, now + 0.65);
+        piOsc.frequency.exponentialRampToValueAtTime(880, now + 1.1);
+
+        piGain.gain.setValueAtTime(0.001, now);
+        piGain.gain.linearRampToValueAtTime(0.42, now + 0.15);
+        piGain.gain.exponentialRampToValueAtTime(0.005, now + 1.25);
+
+        piOsc.connect(piFilter);
+        piFilter.connect(piGain);
+        piGain.connect(this.ctx.destination);
+
+        piOsc.start(now);
+        piOsc.stop(now + 1.3);
+      }
+
+      playMonsterRoar(pitch = 120) {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(pitch, now);
+        osc.frequency.linearRampToValueAtTime(pitch * 2.5, now + 0.2);
+        osc.frequency.linearRampToValueAtTime(pitch * 0.6, now + 0.5);
+        gain.gain.setValueAtTime(0.35, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.5);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.52);
+      }
+
+      playJumpscareScream() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+
+        const screech = this.ctx.createOscillator();
+        const screechGain = this.ctx.createGain();
+        screech.type = 'sawtooth';
+        screech.frequency.setValueAtTime(750, now);
+        screech.frequency.exponentialRampToValueAtTime(1600, now + 0.12);
+        screech.frequency.exponentialRampToValueAtTime(280, now + 0.7);
+        screechGain.gain.setValueAtTime(0.7, now);
+        screechGain.gain.exponentialRampToValueAtTime(0.005, now + 0.8);
+        screech.connect(screechGain);
+        screechGain.connect(this.ctx.destination);
+        screech.start(now);
+        screech.stop(now + 0.85);
+
+        const sub = this.ctx.createOscillator();
+        const subGain = this.ctx.createGain();
+        sub.type = 'triangle';
+        sub.frequency.setValueAtTime(140, now);
+        sub.frequency.exponentialRampToValueAtTime(25, now + 0.5);
+        subGain.gain.setValueAtTime(0.9, now);
+        subGain.gain.linearRampToValueAtTime(0.01, now + 0.65);
+        sub.connect(subGain);
+        subGain.connect(this.ctx.destination);
+        sub.start(now);
+        sub.stop(now + 0.7);
+      }
+
+      playDoorManifestSound() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        // 1. Heavy seismic bass rumble (หินแยก / ประตูมิติเปิด)
+        const bass = this.ctx.createOscillator();
+        const bassGain = this.ctx.createGain();
+        bass.type = 'triangle';
+        bass.frequency.setValueAtTime(90, now);
+        bass.frequency.exponentialRampToValueAtTime(30, now + 1.2);
+        bassGain.gain.setValueAtTime(0.75, now);
+        bassGain.gain.exponentialRampToValueAtTime(0.01, now + 1.4);
+        bass.connect(bassGain);
+        bassGain.connect(this.ctx.destination);
+        bass.start(now);
+        bass.stop(now + 1.45);
+
+        // 2. Triumphant mystical chime arpeggio (ทำนองปลดผนึกศักดิ์สิทธิ์)
+        [523.25, 659.25, 783.99, 1046.5, 1318.5, 1567.98].forEach((freq, idx) => {
+          const chime = this.ctx.createOscillator();
+          const chimeGain = this.ctx.createGain();
+          chime.type = 'sine';
+          const startTime = now + idx * 0.12;
+          chime.frequency.setValueAtTime(freq, startTime);
+          chimeGain.gain.setValueAtTime(0.28, startTime);
+          chimeGain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.9);
+          chime.connect(chimeGain);
+          chimeGain.connect(this.ctx.destination);
+          chime.start(startTime);
+          chime.stop(startTime + 0.95);
+        });
+      }
+    }
+
+    const sound = new HorrorAudio();
+
+    function createHorrorSpectreTexture() {
+      const cvs = document.createElement('canvas');
+      cvs.width = 512;
+      cvs.height = 768;
+      const ctx = cvs.getContext('2d');
+      ctx.clearRect(0, 0, 512, 768);
+
+      ctx.fillStyle = '#060608';
+      ctx.beginPath();
+      ctx.ellipse(256, 680, 160, 220, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#1c1b20';
+      ctx.fillRect(230, 420, 52, 130);
+      ctx.strokeStyle = '#050507';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(230, 420, 52, 130);
+
+      ctx.strokeStyle = '#020204';
+      ctx.lineWidth = 2.2;
+      for (let i = 0; i < 480; i++) {
+        const rootX = 170 + Math.random() * 172;
+        const rootY = 320 + Math.random() * 80;
+        const tipX = 256 + (Math.random() - 0.5) * 440;
+        const tipY = Math.random() * 210;
+        const cpX = (rootX + tipX) / 2 + (Math.random() - 0.5) * 110;
+        const cpY = (rootY + tipY) / 2 + (Math.random() - 0.5) * 80;
+
+        ctx.beginPath();
+        ctx.moveTo(rootX, rootY);
+        ctx.quadraticCurveTo(cpX, cpY, tipX, tipY);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = '#07070a';
+      ctx.beginPath();
+      ctx.ellipse(256, 250, 120, 140, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#2a2930';
+      ctx.beginPath();
+      ctx.ellipse(256, 370, 72, 90, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      [220, 292].forEach(ex => {
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(ex, 350, 18, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#991b1b';
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
+
+        ctx.fillStyle = '#000000';
+        ctx.beginPath();
+        ctx.arc(ex, 350, 4, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      ctx.fillStyle = '#040406';
+      ctx.beginPath();
+      ctx.ellipse(256, 420, 38, 22, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#e2e8f0';
+      for (let tx = 226; tx <= 286; tx += 6) {
+        ctx.fillRect(tx, 404, 5, 12);
+        ctx.fillRect(tx, 422, 5, 12);
+      }
+
+      const texture = new THREE.CanvasTexture(cvs);
+      texture.needsUpdate = true;
+      return texture;
+    }
+
+    function createThaiDancerTexture() {
+      const cvs = document.createElement('canvas');
+      cvs.width = 512;
+      cvs.height = 768;
+      const ctx = cvs.getContext('2d');
+      ctx.clearRect(0, 0, 512, 768);
+
+      // Chada
+      ctx.fillStyle = '#ca8a04';
+      ctx.beginPath();
+      ctx.ellipse(256, 260, 96, 32, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(205, 175);
+      ctx.lineTo(256, 45);
+      ctx.lineTo(307, 175);
+      ctx.closePath();
+      ctx.fillStyle = '#facc15';
+      ctx.fill();
+
+      // Ghostly pale face
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.ellipse(256, 360, 68, 80, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#020617';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Eyebrows
+      ctx.strokeStyle = '#020617';
+      ctx.lineWidth = 4.5;
+      ctx.beginPath();
+      ctx.moveTo(205, 335); ctx.quadraticCurveTo(225, 320, 245, 332);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(267, 332); ctx.quadraticCurveTo(287, 320, 307, 335);
+      ctx.stroke();
+
+      // Eyes
+      [226, 286].forEach(ex => {
+        ctx.fillStyle = '#fee2e2';
+        ctx.beginPath();
+        ctx.ellipse(ex, 350, 16, 17, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(ex, 350, 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#000000';
+        ctx.beginPath();
+        ctx.arc(ex, 350, 3, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Red lips
+      ctx.fillStyle = '#dc2626';
+      ctx.beginPath();
+      ctx.moveTo(234, 405);
+      ctx.quadraticCurveTo(256, 396, 278, 405);
+      ctx.quadraticCurveTo(256, 424, 234, 405);
+      ctx.fill();
+
+      const texture = new THREE.CanvasTexture(cvs);
+      texture.needsUpdate = true;
+      return texture;
+    }
+
+    function createWallTexture() {
+      const cvs = document.createElement('canvas');
+      cvs.width = 256;
+      cvs.height = 256;
+      const ctx = cvs.getContext('2d');
+      ctx.fillStyle = '#1c1b22';
+      ctx.fillRect(0, 0, 256, 256);
+      ctx.strokeStyle = '#0f0e13';
+      ctx.lineWidth = 4;
+      for (let y = 0; y < 256; y += 32) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(256, y);
+        ctx.stroke();
+      }
+      for (let i = 0; i < 60; i++) {
+        ctx.fillStyle = Math.random() > 0.5 ? '#15141b' : '#262430';
+        ctx.fillRect(Math.random() * 256, Math.random() * 256, 8, 3);
+      }
+      const texture = new THREE.CanvasTexture(cvs);
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      return texture;
+    }
+
+    function createFloorTexture() {
+      const cvs = document.createElement('canvas');
+      cvs.width = 256;
+      cvs.height = 256;
+      const ctx = cvs.getContext('2d');
+      ctx.fillStyle = '#111116';
+      ctx.fillRect(0, 0, 256, 256);
+      ctx.strokeStyle = '#22222d';
+      ctx.lineWidth = 2;
+      for (let x = 0; x < 256; x += 64) ctx.strokeRect(x, 0, 64, 256);
+      for (let y = 0; y < 256; y += 64) ctx.strokeRect(0, y, 256, 64);
+      const texture = new THREE.CanvasTexture(cvs);
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(10, 10);
+      return texture;
+    }
+
+    let scene, camera, renderer;
+    let flashlight, ambientLight, lighterLight;
+    let clock = new THREE.Clock();
+
+    let isFlashlightOn = true;
+    let batteryLevel = 100;
+    const BATTERY_DRAIN_SPEED = 2.4;
+    const BATTERY_RECHARGE_AMOUNT = 45;
+
+    let isLighterOn = false;
+    let lastRadarPingTime = 0;
+    let darknessElapsed = 0;
+
+    const MAP_SIZE = 16;
+    const CELL_SIZE = 4;
+    const mapLayout = [
+      [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+      [1,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1],
+      [1,0,1,1,1,0,1,0,0,1,0,1,1,1,0,1],
+      [1,0,0,0,1,0,0,0,0,0,0,1,0,0,0,1],
+      [1,1,1,0,1,1,0,1,1,0,1,1,0,1,1,1],
+      [1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,1],
+      [1,1,1,0,1,0,1,1,1,1,0,1,1,1,0,1],
+      [1,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1],
+      [1,0,1,1,1,0,1,0,0,1,0,1,1,1,0,1],
+      [1,0,0,0,1,0,0,0,0,0,0,1,0,0,0,1],
+      [1,1,1,0,1,1,0,1,1,0,1,1,0,1,1,1],
+      [1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,1],
+      [1,0,1,1,1,1,0,0,0,0,1,1,1,1,0,1],
+      [1,0,1,0,0,0,0,1,1,0,0,0,0,1,0,1],
+      [1,0,0,0,1,1,0,1,1,0,1,1,0,0,2,1],
+      [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    ];
+
+    const wallColliders = [];
+    let collectibleOrbs = [];
+    let collectibleBatteries = [];
+
+    // Exit Door Structure & State
+    let isExitDoorRevealed = false;
+    let exitDoorGroup = null;
+    let exitDoorMesh = null;
+    let exitDoorLight = null;
+    let exitBeaconBeam = null;
+    let exitPortalRings = [];
+    let exitWorldPos = { x: 14 * CELL_SIZE + CELL_SIZE / 2, z: 14 * CELL_SIZE + CELL_SIZE / 2 };
+
+    function initScene() {
+      scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x050508, 0.055);
+
+      camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 100);
+      camera.position.set(6, 1.6, 6);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+      ambientLight = new THREE.AmbientLight(0x0e0e18, 0.35);
+      scene.add(ambientLight);
+
+      flashlight = new THREE.SpotLight(0xfffaed, 2.8, 25, Math.PI / 5, 0.45, 1.2);
+      flashlight.position.set(0, 0, 0);
+      flashlight.castShadow = true;
+      camera.add(flashlight);
+      const flashlightTarget = new THREE.Object3D();
+      flashlightTarget.position.set(0, 0, -5);
+      camera.add(flashlightTarget);
+      flashlight.target = flashlightTarget;
+
+      lighterLight = new THREE.PointLight(0xf97316, 0, 4.5, 2.0);
+      lighterLight.position.set(0, -0.3, -0.5);
+      camera.add(lighterLight);
+
+      scene.add(camera);
+
+      // Floor & Ceiling
+      const floorGeo = new THREE.PlaneGeometry(MAP_SIZE * CELL_SIZE, MAP_SIZE * CELL_SIZE);
+      const floorMat = new THREE.MeshStandardMaterial({
+        map: createFloorTexture(),
+        roughness: 0.85,
+        metalness: 0.1
+      });
+      const floor = new THREE.Mesh(floorGeo, floorMat);
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.set((MAP_SIZE * CELL_SIZE) / 2, 0, (MAP_SIZE * CELL_SIZE) / 2);
+      floor.receiveShadow = true;
+      scene.add(floor);
+
+      const ceilingMat = new THREE.MeshStandardMaterial({ color: 0x08080c, roughness: 0.95 });
+      const ceiling = new THREE.Mesh(floorGeo, ceilingMat);
+      ceiling.rotation.x = Math.PI / 2;
+      ceiling.position.set((MAP_SIZE * CELL_SIZE) / 2, 3.5, (MAP_SIZE * CELL_SIZE) / 2);
+      scene.add(ceiling);
+
+      // Walls
+      const wallGeo = new THREE.BoxGeometry(CELL_SIZE, 3.5, CELL_SIZE);
+      const wallMat = new THREE.MeshStandardMaterial({
+        map: createWallTexture(),
+        roughness: 0.9,
+        metalness: 0.05
+      });
+
+      for (let r = 0; r < MAP_SIZE; r++) {
+        for (let c = 0; c < MAP_SIZE; c++) {
+          const type = mapLayout[r][c];
+          const x = c * CELL_SIZE + CELL_SIZE / 2;
+          const z = r * CELL_SIZE + CELL_SIZE / 2;
+
+          if (type === 1) {
+            const wall = new THREE.Mesh(wallGeo, wallMat);
+            wall.position.set(x, 1.75, z);
+            wall.castShadow = true;
+            wall.receiveShadow = true;
+            scene.add(wall);
+            wallColliders.push({
+              minX: x - CELL_SIZE / 2,
+              maxX: x + CELL_SIZE / 2,
+              minZ: z - CELL_SIZE / 2,
+              maxZ: z + CELL_SIZE / 2
+            });
+          } else if (type === 2) {
+            exitWorldPos = { x, z };
+            createManifestableExitDoor(x, z);
+          }
+        }
+      }
+
+      spawnOrbs();
+      spawnBatteries();
+      spawnMonsters();
+    }
+
+    // Build the exit portal that is initially hidden and manifests once 5 orbs are retrieved
+    function createManifestableExitDoor(x, z) {
+      exitDoorGroup = new THREE.Group();
+      exitDoorGroup.position.set(x, 0, z);
+
+      // 1. Grand Ancient Door Frame (เสาประตูมิติหินโบราณ)
+      const frameMat = new THREE.MeshStandardMaterial({
+        color: 0x27272a,
+        roughness: 0.7,
+        metalness: 0.3
+      });
+
+      const leftPillar = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3.4, 0.6), frameMat);
+      leftPillar.position.set(-1.6, 1.7, 0);
+      exitDoorGroup.add(leftPillar);
+
+      const rightPillar = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3.4, 0.6), frameMat);
+      rightPillar.position.set(1.6, 1.7, 0);
+      exitDoorGroup.add(rightPillar);
+
+      const topArch = new THREE.Mesh(new THREE.BoxGeometry(3.7, 0.5, 0.6), frameMat);
+      topArch.position.set(0, 3.2, 0);
+      exitDoorGroup.add(topArch);
+
+      // 2. Door Portal Plane (บานประตูมิติแสงเขียวมรกต)
+      const doorGeo = new THREE.BoxGeometry(2.8, 3.0, 0.3);
+      const doorMat = new THREE.MeshStandardMaterial({
+        color: 0x10b981,
+        emissive: 0x059669,
+        emissiveIntensity: 0.9,
+        roughness: 0.2,
+        transparent: true,
+        opacity: 0.88
+      });
+      exitDoorMesh = new THREE.Mesh(doorGeo, doorMat);
+      exitDoorMesh.position.set(0, 1.5, 0);
+      exitDoorGroup.add(exitDoorMesh);
+
+      // 3. Magical Glowing Portal Ring / Runes
+      exitPortalRings = [];
+      for (let i = 0; i < 2; i++) {
+        const ringGeo = new THREE.TorusGeometry(1.0 + i * 0.35, 0.05, 8, 32);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: 0x34d399,
+          transparent: true,
+          opacity: 0.8,
+          blending: THREE.AdditiveBlending
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.position.set(0, 1.6, 0.18);
+        exitDoorGroup.add(ring);
+        exitPortalRings.push(ring);
+      }
+
+      // 4. Emerald Escape Beacon (ลำแสงนำทางสว่างไสวทะลุเพดาน)
+      const beaconGeo = new THREE.CylinderGeometry(0.5, 1.2, 3.4, 16, 1, true);
+      const beaconMat = new THREE.MeshBasicMaterial({
+        color: 0x10b981,
+        transparent: true,
+        opacity: 0.35,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide
+      });
+      exitBeaconBeam = new THREE.Mesh(beaconGeo, beaconMat);
+      exitBeaconBeam.position.set(0, 1.7, 0);
+      exitDoorGroup.add(exitBeaconBeam);
+
+      // 5. Powerful Radiant Point Light
+      exitDoorLight = new THREE.PointLight(0x10b981, 3.5, 14);
+      exitDoorLight.position.set(0, 2.0, 0.5);
+      exitDoorGroup.add(exitDoorLight);
+
+      // CRITICAL: Initially hidden until all 5 orbs are collected!
+      exitDoorGroup.visible = false;
+      scene.add(exitDoorGroup);
+    }
+
+    function spawnOrbs() {
+      collectibleOrbs.forEach(o => scene.remove(o.mesh));
+      collectibleOrbs = [];
+
+      const orbPositions = [
+        { x: 1 * CELL_SIZE + 2, z: 1 * CELL_SIZE + 2 },
+        { x: 14 * CELL_SIZE + 2, z: 1 * CELL_SIZE + 2 },
+        { x: 1 * CELL_SIZE + 2, z: 13 * CELL_SIZE + 2 },
+        { x: 7 * CELL_SIZE + 2, z: 7 * CELL_SIZE + 2 },
+        { x: 13 * CELL_SIZE + 2, z: 9 * CELL_SIZE + 2 }
+      ];
+
+      const orbGeo = new THREE.SphereGeometry(0.35, 16, 16);
+      const orbMat = new THREE.MeshStandardMaterial({
+        color: 0xf59e0b,
+        emissive: 0xf59e0b,
+        emissiveIntensity: 0.8,
+        roughness: 0.2
+      });
+
+      orbPositions.forEach((pos, index) => {
+        const mesh = new THREE.Mesh(orbGeo, orbMat.clone());
+        mesh.position.set(pos.x, 1.2, pos.z);
+        const pointLight = new THREE.PointLight(0xfbbf24, 1.2, 4);
+        mesh.add(pointLight);
+        scene.add(mesh);
+        collectibleOrbs.push({ id: index, mesh, collected: false, baseY: 1.2 });
+      });
+    }
+
+    function spawnBatteries() {
+      collectibleBatteries.forEach(b => scene.remove(b.mesh));
+      collectibleBatteries = [];
+
+      const batteryPositions = [
+        { x: 4 * CELL_SIZE + 2, z: 1 * CELL_SIZE + 2 },
+        { x: 3 * CELL_SIZE + 2, z: 5 * CELL_SIZE + 2 },
+        { x: 9 * CELL_SIZE + 2, z: 5 * CELL_SIZE + 2 },
+        { x: 6 * CELL_SIZE + 2, z: 11 * CELL_SIZE + 2 }
+      ];
+
+      batteryPositions.forEach((pos, index) => {
+        const batteryGroup = new THREE.Group();
+
+        const cellGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.45, 12);
+        const cellMat = new THREE.MeshStandardMaterial({
+          color: 0x10b981,
+          emissive: 0x059669,
+          emissiveIntensity: 0.5,
+          roughness: 0.3
+        });
+        const cell = new THREE.Mesh(cellGeo, cellMat);
+        batteryGroup.add(cell);
+
+        const capGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.1, 10);
+        const capMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.8 });
+        const cap = new THREE.Mesh(capGeo, capMat);
+        cap.position.y = 0.25;
+        batteryGroup.add(cap);
+
+        const auraGeo = new THREE.SphereGeometry(0.7, 16, 16);
+        const auraMat = new THREE.MeshBasicMaterial({
+          color: 0x34d399,
+          transparent: true,
+          opacity: 0.2,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        });
+        const aura = new THREE.Mesh(auraGeo, auraMat);
+        batteryGroup.add(aura);
+
+        const beamGeo = new THREE.CylinderGeometry(0.22, 0.5, 3.8, 12, 1, true);
+        const beamMat = new THREE.MeshBasicMaterial({
+          color: 0x10b981,
+          transparent: true,
+          opacity: 0.15,
+          blending: THREE.AdditiveBlending,
+          side: THREE.DoubleSide,
+          depthWrite: false
+        });
+        const beam = new THREE.Mesh(beamGeo, beamMat);
+        beam.position.y = 1.7;
+        batteryGroup.add(beam);
+
+        const batLight = new THREE.PointLight(0x34d399, 0.9, 3.5);
+        batteryGroup.add(batLight);
+
+        batteryGroup.position.set(pos.x, 0.8, pos.z);
+        scene.add(batteryGroup);
+
+        collectibleBatteries.push({
+          id: index,
+          mesh: batteryGroup,
+          collected: false,
+          baseY: 0.8,
+          light: batLight,
+          cellMat,
+          aura,
+          beam
+        });
+      });
+    }
+
+    let monsters = [
+      {
+        name: 'The Hair Spectre (ผีผมยาวสุดหลอน)',
+        isSprite: true,
+        ghostType: 'hair',
+        group: null,
+        eyeLight: null,
+        color: 0xffffff,
+        x: 7 * CELL_SIZE + 2,
+        z: 7 * CELL_SIZE + 2,
+        speedPatrol: 1.5,
+        speedChase: 3.3,
+        alerted: false,
+        soundPitch: 220,
+        patrolPoints: [
+          { x: 7 * CELL_SIZE + 2, z: 7 * CELL_SIZE + 2 },
+          { x: 9 * CELL_SIZE + 2, z: 3 * CELL_SIZE + 2 },
+          { x: 13 * CELL_SIZE + 2, z: 7 * CELL_SIZE + 2 },
+          { x: 7 * CELL_SIZE + 2, z: 13 * CELL_SIZE + 2 }
+        ],
+        currentPoint: 0
+      },
+      {
+        name: 'The Thai Classical Dancer (ผีนางรำชฎาอาฆาต)',
+        isSprite: true,
+        ghostType: 'thai_dancer',
+        group: null,
+        eyeLight: null,
+        color: 0xfacc15,
+        x: 1 * CELL_SIZE + 2,
+        z: 7 * CELL_SIZE + 2,
+        speedPatrol: 1.7,
+        speedChase: 3.5,
+        alerted: false,
+        soundPitch: 480,
+        patrolPoints: [
+          { x: 1 * CELL_SIZE + 2, z: 7 * CELL_SIZE + 2 },
+          { x: 5 * CELL_SIZE + 2, z: 9 * CELL_SIZE + 2 },
+          { x: 9 * CELL_SIZE + 2, z: 13 * CELL_SIZE + 2 },
+          { x: 1 * CELL_SIZE + 2, z: 13 * CELL_SIZE + 2 }
+        ],
+        currentPoint: 0
+      },
+      {
+        name: 'The Shadow',
+        isSprite: false,
+        ghostType: 'shadow',
+        group: null,
+        eyeLight: null,
+        color: 0xff1e1e,
+        x: 13 * CELL_SIZE + 2,
+        z: 3 * CELL_SIZE + 2,
+        speedPatrol: 1.5,
+        speedChase: 3.1,
+        alerted: false,
+        soundPitch: 110,
+        patrolPoints: [
+          { x: 13 * CELL_SIZE + 2, z: 3 * CELL_SIZE + 2 },
+          { x: 9 * CELL_SIZE + 2, z: 7 * CELL_SIZE + 2 },
+          { x: 3 * CELL_SIZE + 2, z: 9 * CELL_SIZE + 2 },
+          { x: 1 * CELL_SIZE + 2, z: 3 * CELL_SIZE + 2 }
+        ],
+        currentPoint: 0
+      },
+      {
+        name: 'The Phantom Ghost',
+        isSprite: false,
+        ghostType: 'phantom',
+        group: null,
+        eyeLight: null,
+        color: 0xa855f7,
+        x: 3 * CELL_SIZE + 2,
+        z: 13 * CELL_SIZE + 2,
+        speedPatrol: 1.3,
+        speedChase: 2.9,
+        alerted: false,
+        soundPitch: 160,
+        patrolPoints: [
+          { x: 3 * CELL_SIZE + 2, z: 13 * CELL_SIZE + 2 },
+          { x: 9 * CELL_SIZE + 2, z: 13 * CELL_SIZE + 2 },
+          { x: 11 * CELL_SIZE + 2, z: 7 * CELL_SIZE + 2 },
+          { x: 7 * CELL_SIZE + 2, z: 3 * CELL_SIZE + 2 }
+        ],
+        currentPoint: 0
+      }
+    ];
+
+    function spawnMonsters() {
+      const spectreTexture = createHorrorSpectreTexture();
+      const thaiDancerTexture = createThaiDancerTexture();
+
+      monsters.forEach(m => {
+        if (m.group) scene.remove(m.group);
+
+        if (m.isSprite) {
+          const group = new THREE.Group();
+          const tex = m.ghostType === 'thai_dancer' ? thaiDancerTexture : spectreTexture;
+          const spriteMat = new THREE.SpriteMaterial({
+            map: tex,
+            transparent: true,
+            color: 0xffffff
+          });
+          const sprite = new THREE.Sprite(spriteMat);
+          sprite.scale.set(2.4, 3.4, 1);
+          sprite.position.y = 1.7;
+          group.add(sprite);
+
+          const glowColor = m.ghostType === 'thai_dancer' ? 0xf59e0b : 0xff0000;
+          const glow = new THREE.PointLight(glowColor, 1.6, 7);
+          glow.position.set(0, 1.8, 0.2);
+          group.add(glow);
+
+          group.position.set(m.x, 0, m.z);
+          scene.add(group);
+
+          m.group = group;
+          m.eyeLight = glow;
+          m.spriteObj = sprite;
+        } else {
+          const group = new THREE.Group();
+
+          const bodyGeo = new THREE.CylinderGeometry(0.32, 0.2, 2.2, 12);
+          const bodyMat = new THREE.MeshStandardMaterial({
+            color: m.color === 0xff1e1e ? 0x09090b : 0x140f24,
+            roughness: 0.95
+          });
+          const body = new THREE.Mesh(bodyGeo, bodyMat);
+          body.position.y = 1.4;
+          group.add(body);
+
+          const headGeo = new THREE.SphereGeometry(0.38, 12, 12);
+          const head = new THREE.Mesh(headGeo, bodyMat);
+          head.position.y = 2.65;
+          group.add(head);
+
+          const eyeGeo = new THREE.SphereGeometry(0.08, 8, 8);
+          const eyeMat = new THREE.MeshBasicMaterial({ color: m.color });
+          
+          const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+          leftEye.position.set(-0.15, 2.7, 0.35);
+          group.add(leftEye);
+
+          const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+          rightEye.position.set(0.15, 2.7, 0.35);
+          group.add(rightEye);
+
+          const eyeLight = new THREE.PointLight(m.color, 1.8, 6);
+          eyeLight.position.set(0, 2.7, 0.4);
+          group.add(eyeLight);
+
+          group.position.set(m.x, 0, m.z);
+          scene.add(group);
+
+          m.group = group;
+          m.eyeLight = eyeLight;
+        }
+      });
+    }
+
+    const player = {
+      x: 6,
+      z: 6,
+      yaw: 0,
+      pitch: 0,
+      radius: 0.5,
+      speed: 4.5
+    };
+
+    const keys = { w: false, a: false, s: false, d: false };
+    let isPointerLocked = false;
+
+    function toggleFlashlight() {
+      if (batteryLevel <= 0) {
+        isFlashlightOn = false;
+        flashlight.visible = false;
+        toggleEmergencyLighter();
+        return;
+      }
+      isFlashlightOn = !isFlashlightOn;
+      flashlight.visible = isFlashlightOn;
+      if (isFlashlightOn) {
+        isLighterOn = false;
+        lighterLight.intensity = 0;
+      }
+      sound.playSwitch();
+      updateFlashlightUI();
+    }
+
+    function toggleEmergencyLighter() {
+      isLighterOn = !isLighterOn;
+      if (isLighterOn) {
+        lighterLight.intensity = 1.4;
+        sound.playLighterFlick();
+      } else {
+        lighterLight.intensity = 0;
+        sound.playSwitch();
+      }
+      updateFlashlightUI();
+    }
+
+    function updateFlashlightUI() {
+      const btn = document.getElementById('btn-toggle-light');
+      const lighterBtn = document.getElementById('btn-emergency-lighter');
+      const icon = document.getElementById('battery-icon');
+      
+      if (isFlashlightOn && batteryLevel > 0) {
+        btn.classList.add('border-yellow-400', 'bg-neutral-800');
+        btn.classList.remove('border-neutral-700', 'opacity-50');
+        icon.textContent = '🔦';
+      } else {
+        btn.classList.remove('border-yellow-400', 'bg-neutral-800');
+        btn.classList.add('border-neutral-700', 'opacity-50');
+        icon.textContent = '🌑';
+      }
+
+      if (batteryLevel <= 0) {
+        lighterBtn.classList.remove('hidden');
+        if (isLighterOn) {
+          lighterBtn.classList.add('border-amber-400', 'bg-amber-900/90');
+          lighterBtn.classList.remove('border-neutral-700');
+        } else {
+          lighterBtn.classList.remove('border-amber-400', 'bg-amber-900/90');
+          lighterBtn.classList.add('border-neutral-700');
+        }
+      } else {
+        lighterBtn.classList.add('hidden');
+      }
+    }
+
+    window.addEventListener('keydown', (e) => {
+      const k = e.key.toLowerCase();
+      if (k === 'w' || k === 'arrowup') keys.w = true;
+      if (k === 's' || k === 'arrowdown') keys.s = true;
+      if (k === 'a' || k === 'arrowleft') keys.a = true;
+      if (k === 'd' || k === 'arrowright') keys.d = true;
+      if (k === 'f') toggleFlashlight();
+      if (k === 'e') toggleEmergencyLighter();
+    });
+
+    document.getElementById('btn-emergency-lighter').addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleEmergencyLighter();
+    });
+
+    window.addEventListener('keyup', (e) => {
+      const k = e.key.toLowerCase();
+      if (k === 'w' || k === 'arrowup') keys.w = false;
+      if (k === 's' || k === 'arrowdown') keys.s = false;
+      if (k === 'a' || k === 'arrowleft') keys.a = false;
+      if (k === 'd' || k === 'arrowright') keys.d = false;
+    });
+
+    document.getElementById('btn-toggle-light').addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleFlashlight();
+    });
+
+    const canvasContainer = document.getElementById('canvas-container');
+    canvasContainer.addEventListener('click', () => {
+      if (gameState === 'PLAYING') {
+        canvasContainer.requestPointerLock();
+      }
+    });
+
+    document.addEventListener('pointerlockchange', () => {
+      isPointerLocked = (document.pointerLockElement === canvasContainer);
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isPointerLocked || gameState !== 'PLAYING') return;
+      const sensitivity = 0.0024;
+      player.yaw -= e.movementX * sensitivity;
+      player.pitch -= e.movementY * sensitivity;
+      player.pitch = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, player.pitch));
+    });
+
+    let touchMoveActive = false;
+    let touchMoveOrigin = { x: 0, y: 0 };
+    let touchMoveDelta = { x: 0, y: 0 };
+    let touchLookActive = false;
+    let touchLookLast = { x: 0, y: 0 };
+
+    const touchMoveZone = document.getElementById('touch-move-zone');
+    const touchMoveKnob = document.getElementById('touch-move-knob');
+    const touchLookZone = document.getElementById('touch-look-zone');
+
+    touchMoveZone.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      touchMoveActive = true;
+      const t = e.touches[0];
+      const rect = touchMoveZone.getBoundingClientRect();
+      touchMoveOrigin = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+
+    window.addEventListener('touchmove', (e) => {
+      for (let i = 0; i < e.touches.length; i++) {
+        const t = e.touches[i];
+        if (touchMoveActive && t.clientX < window.innerWidth / 2) {
+          const dx = t.clientX - touchMoveOrigin.x;
+          const dy = t.clientY - touchMoveOrigin.y;
+          const dist = Math.min(34, Math.hypot(dx, dy));
+          const angle = Math.atan2(dy, dx);
+          touchMoveDelta = {
+            x: (Math.cos(angle) * dist) / 34,
+            y: (Math.sin(angle) * dist) / 34
+          };
+          touchMoveKnob.style.transform = `translate(${touchMoveDelta.x * 22}px, ${touchMoveDelta.y * 22}px)`;
+        } else if (touchLookActive && t.clientX >= window.innerWidth / 2) {
+          const dx = t.clientX - touchLookLast.x;
+          const dy = t.clientY - touchLookLast.y;
+          touchLookLast = { x: t.clientX, y: t.clientY };
+          player.yaw -= dx * 0.005;
+          player.pitch -= dy * 0.005;
+          player.pitch = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, player.pitch));
+        }
+      }
+    });
+
+    const resetTouchMove = () => {
+      touchMoveActive = false;
+      touchMoveDelta = { x: 0, y: 0 };
+      touchMoveKnob.style.transform = `translate(0px, 0px)`;
+    };
+    touchMoveZone.addEventListener('touchend', resetTouchMove);
+    touchMoveZone.addEventListener('touchcancel', resetTouchMove);
+
+    touchLookZone.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      touchLookActive = true;
+      const t = e.touches[0];
+      touchLookLast = { x: t.clientX, y: t.clientY };
+    });
+    touchLookZone.addEventListener('touchend', () => touchLookActive = false);
+
+    function checkCollision(px, pz, radius) {
+      for (const w of wallColliders) {
+        if (px + radius > w.minX && px - radius < w.maxX &&
+            pz + radius > w.minZ && pz - radius < w.maxZ) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    let gameState = 'START';
+    let timerSeconds = 0;
+    let timerInterval = null;
+
+    let targetBPM = 72;
+    let currentBPM = 72;
+    let ecgPhase = 0;
+    let ecgBeatTriggered = false;
+    const ECG_BUFFER_LENGTH = 65;
+    const ecgDataBuffer = new Array(ECG_BUFFER_LENGTH).fill(0);
+    const ecgCanvas = document.getElementById('ecg-canvas');
+    const ecgCtx = ecgCanvas ? ecgCanvas.getContext('2d') : null;
+
+    function getECGWave(phase) {
+      if (phase < 0.12) return 0;
+      if (phase < 0.22) return Math.sin((phase - 0.12) / 0.10 * Math.PI) * 0.18;
+      if (phase < 0.32) return 0;
+      if (phase < 0.36) return -((phase - 0.32) / 0.04) * 0.18;
+      if (phase < 0.44) {
+        const norm = (phase - 0.36) / 0.08;
+        return norm < 0.5 ? -0.18 + (norm * 2) * 1.18 : 1.0 - ((norm - 0.5) * 2) * 1.35;
+      }
+      if (phase < 0.48) return -0.35 + ((phase - 0.44) / 0.04) * 0.35;
+      if (phase < 0.56) return 0;
+      if (phase < 0.72) return Math.sin((phase - 0.56) / 0.16 * Math.PI) * 0.28;
+      return 0;
+    }
+
+    function resetGame() {
+      player.x = 6;
+      player.z = 6;
+      player.yaw = 0;
+      player.pitch = 0;
+
+      monsters[0].x = 7 * CELL_SIZE + 2;
+      monsters[0].z = 7 * CELL_SIZE + 2;
+      monsters[0].currentPoint = 0;
+      monsters[0].alerted = false;
+
+      monsters[1].x = 1 * CELL_SIZE + 2;
+      monsters[1].z = 7 * CELL_SIZE + 2;
+      monsters[1].currentPoint = 0;
+      monsters[1].alerted = false;
+
+      monsters[2].x = 13 * CELL_SIZE + 2;
+      monsters[2].z = 3 * CELL_SIZE + 2;
+      monsters[2].currentPoint = 0;
+      monsters[2].alerted = false;
+
+      monsters[3].x = 3 * CELL_SIZE + 2;
+      monsters[3].z = 13 * CELL_SIZE + 2;
+      monsters[3].currentPoint = 0;
+      monsters[3].alerted = false;
+
+      spawnOrbs();
+      spawnBatteries();
+
+      // Reset Exit Door - hidden at start!
+      isExitDoorRevealed = false;
+      if (exitDoorGroup) {
+        exitDoorGroup.visible = false;
+      }
+      document.getElementById('hud-exit-tracker').classList.add('hidden');
+      document.getElementById('exit-unlocked-banner').classList.add('hidden');
+
+      const hudOrbsBox = document.getElementById('hud-orbs-box');
+      hudOrbsBox.className = 'flex items-center gap-1.5 bg-neutral-900/85 border border-amber-600/40 backdrop-blur px-3 py-1.5 rounded-xl shadow-lg transition-all duration-300';
+
+      timerSeconds = 0;
+      targetBPM = 72;
+      currentBPM = 72;
+      ecgPhase = 0;
+      ecgBeatTriggered = false;
+      ecgDataBuffer.fill(0);
+      isLighterOn = false;
+      if (lighterLight) lighterLight.intensity = 0;
+      darknessElapsed = 0;
+
+      updateHUD();
+      updateFlashlightUI();
+
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        if (gameState === 'PLAYING') {
+          timerSeconds++;
+          const m = String(Math.floor(timerSeconds / 60)).padStart(2, '0');
+          const s = String(timerSeconds % 60).padStart(2, '0');
+          document.getElementById('hud-timer').textContent = `${m}:${s}`;
+        }
+      }, 1000);
+    }
+
+    // Function called when the 5th orb is retrieved: Door manifests!
+    function revealExitDoor() {
+      if (isExitDoorRevealed) return;
+      isExitDoorRevealed = true;
+
+      // Reveal Door in 3D Scene
+      if (exitDoorGroup) {
+        exitDoorGroup.visible = true;
+        exitDoorGroup.scale.set(0.01, 0.01, 0.01);
+
+        // Smoothly expand manifestation animation
+        let scaleT = 0.01;
+        const expandInterval = setInterval(() => {
+          scaleT += 0.08;
+          if (scaleT >= 1.0) {
+            scaleT = 1.0;
+            clearInterval(expandInterval);
+          }
+          if (exitDoorGroup) exitDoorGroup.scale.set(scaleT, scaleT, scaleT);
+        }, 30);
+      }
+
+      // Play dramatic manifestation sound
+      sound.playDoorManifestSound();
+
+      // Show HUD and announcements
+      document.getElementById('hud-exit-tracker').classList.remove('hidden');
+      const banner = document.getElementById('exit-unlocked-banner');
+      banner.classList.remove('hidden');
+
+      // Style Orbs HUD to completed emerald state
+      const hudOrbsBox = document.getElementById('hud-orbs-box');
+      hudOrbsBox.className = 'flex items-center gap-1.5 bg-emerald-950/90 border border-emerald-400 backdrop-blur px-3 py-1.5 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.5)] animate-pulse';
+
+      // Hide banner after 5.5s so screen remains clear
+      setTimeout(() => {
+        banner.classList.add('hidden');
+      }, 5500);
+
+      // Increase monsters excitement in endgame escape phase
+      monsters.forEach(m => {
+        m.speedChase *= 1.08;
+      });
+    }
+
+    function updateHUD() {
+      const collected = collectibleOrbs.filter(o => o.collected).length;
+      document.getElementById('hud-orbs').textContent = `${collected} / ${collectibleOrbs.length}`;
+
+      const bar = document.getElementById('battery-bar');
+      const text = document.getElementById('battery-text');
+      const pct = Math.max(0, Math.round(batteryLevel));
+      bar.style.width = `${pct}%`;
+      text.textContent = `${pct}%`;
+
+      if (pct > 50) {
+        bar.className = 'h-full bg-gradient-to-r from-emerald-500 to-green-400 transition-all';
+      } else if (pct > 20) {
+        bar.className = 'h-full bg-gradient-to-r from-yellow-500 to-amber-400 transition-all';
+      } else {
+        bar.className = 'h-full bg-gradient-to-r from-red-600 to-rose-500 animate-pulse transition-all';
+      }
+
+      const hudHeartbeat = document.getElementById('hud-heartbeat');
+      const status = document.getElementById('hud-status');
+      const heartIcon = document.getElementById('heart-icon');
+      const bpmText = document.getElementById('bpm-text');
+      const glowDot = document.getElementById('ecg-glow-indicator');
+      const vignette = document.getElementById('vignette-fx');
+
+      const roundedBPM = Math.round(currentBPM);
+      bpmText.textContent = roundedBPM;
+
+      if (roundedBPM >= 135) {
+        status.textContent = 'วิกฤต! ผีประชิดตัว!';
+        status.className = 'text-[9px] sm:text-[10px] font-bold text-red-400 animate-pulse whitespace-nowrap';
+        bpmText.className = 'font-mono text-xs sm:text-sm font-black text-red-500';
+        hudHeartbeat.className = 'flex items-center gap-2 bg-neutral-950/95 border border-red-600 px-2.5 py-1.5 rounded-xl shadow-red-950/80 shadow-2xl backdrop-blur';
+        glowDot.className = 'absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-red-500 animate-ping';
+        heartIcon.className = 'text-red-500 text-xs sm:text-sm animate-ping';
+        vignette.className = 'vignette vignette-pulse-danger';
+      } else if (roundedBPM >= 95) {
+        status.textContent = 'ระวัง! สัมผัสถึงสิ่งลี้ลับ';
+        status.className = 'text-[9px] sm:text-[10px] font-semibold text-amber-400 whitespace-nowrap';
+        bpmText.className = 'font-mono text-xs sm:text-sm font-black text-amber-400';
+        hudHeartbeat.className = 'flex items-center gap-2 bg-neutral-950/90 border border-amber-600/70 px-2.5 py-1.5 rounded-xl shadow-lg backdrop-blur';
+        glowDot.className = 'absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse';
+        heartIcon.className = 'text-amber-400 text-xs sm:text-sm animate-bounce';
+        vignette.className = 'vignette';
+      } else {
+        if (isExitDoorRevealed) {
+          status.textContent = 'ประตูทางออกเปิดแล้ว! รีบหนี!';
+          status.className = 'text-[9px] sm:text-[10px] font-black text-emerald-400 animate-pulse whitespace-nowrap';
+          vignette.className = 'vignette vignette-pulse-escape';
+        } else {
+          status.textContent = 'ปกติ (ปลอดภัย)';
+          status.className = 'text-[9px] sm:text-[10px] font-semibold text-emerald-400 whitespace-nowrap';
+          vignette.className = 'vignette';
+        }
+        bpmText.className = 'font-mono text-xs sm:text-sm font-black text-emerald-400';
+        hudHeartbeat.className = 'flex items-center gap-2 bg-neutral-950/90 border border-emerald-900/60 px-2.5 py-1.5 rounded-xl shadow-lg backdrop-blur';
+        glowDot.className = 'absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-emerald-400';
+        heartIcon.className = 'text-red-500 text-xs sm:text-sm animate-pulse';
+      }
+    }
+
+    function drawECGWaveform() {
+      if (!ecgCtx || !ecgCanvas) return;
+      const w = ecgCanvas.width;
+      const h = ecgCanvas.height;
+      const midY = h * 0.58;
+
+      ecgCtx.clearRect(0, 0, w, h);
+
+      let strokeColor = '#10b981';
+      let shadowColor = 'rgba(16, 185, 129, 0.8)';
+      if (currentBPM >= 135) {
+        strokeColor = '#ef4444';
+        shadowColor = 'rgba(239, 68, 68, 0.95)';
+      } else if (currentBPM >= 95) {
+        strokeColor = '#f59e0b';
+        shadowColor = 'rgba(245, 158, 11, 0.85)';
+      }
+
+      ecgCtx.beginPath();
+      const step = w / (ECG_BUFFER_LENGTH - 1);
+
+      for (let i = 0; i < ECG_BUFFER_LENGTH; i++) {
+        const x = i * step;
+        const val = ecgDataBuffer[i];
+        const y = midY - val * (h * 0.48);
+        if (i === 0) ecgCtx.moveTo(x, y);
+        else ecgCtx.lineTo(x, y);
+      }
+
+      ecgCtx.strokeStyle = strokeColor;
+      ecgCtx.lineWidth = 1.8;
+      ecgCtx.shadowColor = shadowColor;
+      ecgCtx.shadowBlur = 6;
+      ecgCtx.stroke();
+
+      const lastX = w;
+      const lastY = midY - ecgDataBuffer[ECG_BUFFER_LENGTH - 1] * (h * 0.48);
+      ecgCtx.beginPath();
+      ecgCtx.arc(lastX - 2, lastY, 2.5, 0, Math.PI * 2);
+      ecgCtx.fillStyle = '#ffffff';
+      ecgCtx.shadowColor = strokeColor;
+      ecgCtx.shadowBlur = 8;
+      ecgCtx.fill();
+    }
+
+    function update(dt) {
+      if (gameState !== 'PLAYING') return;
+
+      // 1. Battery consumption & Flashlight flicker
+      if (isFlashlightOn) {
+        batteryLevel -= BATTERY_DRAIN_SPEED * dt;
+        if (batteryLevel <= 0) {
+          batteryLevel = 0;
+          isFlashlightOn = false;
+          flashlight.visible = false;
+          isLighterOn = true;
+          lighterLight.intensity = 1.3;
+          sound.playLighterFlick();
+        } else if (batteryLevel < 15) {
+          flashlight.intensity = (Math.random() > 0.3) ? 2.5 : 0.4;
+        } else {
+          flashlight.intensity = 2.8;
+        }
+        updateHUD();
+        updateFlashlightUI();
+      }
+
+      if (isLighterOn) {
+        lighterLight.intensity = 1.2 + Math.sin(clock.getElapsedTime() * 15) * 0.25 + (Math.random() - 0.5) * 0.15;
+      }
+
+      // 1.5 Emergency Battery Finder Radar
+      const batteryFinderHUD = document.getElementById('hud-battery-finder');
+      const emergencyAlert = document.getElementById('emergency-alert');
+      const availableBatteries = collectibleBatteries.filter(b => !b.collected);
+
+      if (batteryLevel <= 0 && availableBatteries.length > 0) {
+        batteryFinderHUD.classList.remove('hidden');
+        emergencyAlert.classList.remove('hidden');
+        darknessElapsed += dt;
+
+        if (darknessElapsed > 35) {
+          darknessElapsed = 0;
+          const spawnBat = availableBatteries[0];
+          spawnBat.mesh.position.set(player.x + 4, spawnBat.baseY, player.z + 4);
+        }
+
+        let nearestBat = null;
+        let minDist = 9999;
+        availableBatteries.forEach(b => {
+          const d = Math.hypot(b.mesh.position.x - player.x, b.mesh.position.z - player.z);
+          if (d < minDist) {
+            minDist = d;
+            nearestBat = b;
+          }
+        });
+
+        if (nearestBat) {
+          document.getElementById('battery-dist-text').textContent = `${Math.round(minDist)}m`;
+
+          const dx = nearestBat.mesh.position.x - player.x;
+          const dz = nearestBat.mesh.position.z - player.z;
+          const targetAngle = Math.atan2(dx, dz);
+          let relativeAngle = (targetAngle - player.yaw);
+          relativeAngle = Math.atan2(Math.sin(relativeAngle), Math.cos(relativeAngle));
+          const deg = relativeAngle * (180 / Math.PI);
+          document.getElementById('battery-compass-arrow').style.transform = `rotate(${deg}deg)`;
+
+          const pingInterval = Math.max(0.35, Math.min(1.8, minDist * 0.08));
+          if (clock.getElapsedTime() - lastRadarPingTime > pingInterval) {
+            sound.playRadarSonarPing(minDist);
+            lastRadarPingTime = clock.getElapsedTime();
+          }
+        }
+      } else {
+        batteryFinderHUD.classList.add('hidden');
+        emergencyAlert.classList.add('hidden');
+        darknessElapsed = 0;
+      }
+
+      // 1.8 Exit Compass Tracker (when door has appeared)
+      if (isExitDoorRevealed) {
+        const exitDist = Math.hypot(exitWorldPos.x - player.x, exitWorldPos.z - player.z);
+        document.getElementById('exit-dist-text').textContent = `${Math.round(exitDist)}m`;
+
+        const dx = exitWorldPos.x - player.x;
+        const dz = exitWorldPos.z - player.z;
+        const targetAngle = Math.atan2(dx, dz);
+        let relativeAngle = (targetAngle - player.yaw);
+        relativeAngle = Math.atan2(Math.sin(relativeAngle), Math.cos(relativeAngle));
+        const deg = relativeAngle * (180 / Math.PI);
+        document.getElementById('exit-compass-arrow').style.transform = `rotate(${deg}deg)`;
+
+        // Animate door rings & light pulse
+        if (exitDoorMesh && exitPortalRings.length > 0) {
+          exitPortalRings[0].rotation.z += 1.5 * dt;
+          exitPortalRings[1].rotation.z -= 1.8 * dt;
+          const pulse = Math.sin(clock.getElapsedTime() * 4) * 0.15;
+          exitDoorMesh.material.opacity = 0.82 + pulse;
+          if (exitDoorLight) exitDoorLight.intensity = 3.5 + pulse * 2;
+        }
+      }
+
+      // 2. Player Movement
+      let forward = 0;
+      let side = 0;
+
+      if (keys.w) forward += 1;
+      if (keys.s) forward -= 1;
+      if (keys.a) side -= 1;
+      if (keys.d) side += 1;
+
+      if (touchMoveActive) {
+        side += touchMoveDelta.x;
+        forward -= touchMoveDelta.y;
+      }
+
+      const moveLen = Math.hypot(forward, side);
+      if (moveLen > 0.05) {
+        const normF = forward / Math.max(1, moveLen);
+        const normS = side / Math.max(1, moveLen);
+
+        const dirForwardX = -Math.sin(player.yaw);
+        const dirForwardZ = -Math.cos(player.yaw);
+        const dirRightX = Math.cos(player.yaw);
+        const dirRightZ = -Math.sin(player.yaw);
+
+        const moveX = (dirForwardX * normF + dirRightX * normS) * player.speed * dt;
+        const moveZ = (dirForwardZ * normF + dirRightZ * normS) * player.speed * dt;
+
+        if (!checkCollision(player.x + moveX, player.z, player.radius)) player.x += moveX;
+        if (!checkCollision(player.x, player.z + moveZ, player.radius)) player.z += moveZ;
+      }
+
+      camera.position.x = player.x;
+      camera.position.z = player.z;
+      const bob = moveLen > 0.1 ? Math.sin(clock.getElapsedTime() * 10) * 0.05 : 0;
+      camera.position.y = 1.6 + bob;
+
+      camera.rotation.order = 'YXZ';
+      camera.rotation.y = player.yaw;
+      camera.rotation.x = player.pitch;
+
+      // 3. Orbs Check
+      let nearItem = false;
+      collectibleOrbs.forEach(orb => {
+        if (!orb.collected) {
+          orb.mesh.rotation.y += 2 * dt;
+          orb.mesh.position.y = orb.baseY + Math.sin(clock.getElapsedTime() * 3 + orb.id) * 0.15;
+
+          const dist = Math.hypot(player.x - orb.mesh.position.x, player.z - orb.mesh.position.z);
+          if (dist < 2.0) nearItem = true;
+          if (dist < 1.1) {
+            orb.collected = true;
+            scene.remove(orb.mesh);
+            sound.playPickup();
+            updateHUD();
+
+            const collectedCount = collectibleOrbs.filter(o => o.collected).length;
+            // WHEN 5 ORBS ARE COLLECTED -> EXIT DOOR APPEARS!
+            if (collectedCount === 5) {
+              revealExitDoor();
+            }
+          }
+        }
+      });
+
+      // 4. Battery Pickups Check
+      const isDeadBattery = batteryLevel <= 0;
+      const pulseTime = clock.getElapsedTime() * 5.0;
+      const pulseSine = (Math.sin(pulseTime) + 1) * 0.5;
+
+      collectibleBatteries.forEach(bat => {
+        if (!bat.collected) {
+          bat.mesh.rotation.y += 2.5 * dt;
+          bat.mesh.position.y = bat.baseY + Math.sin(clock.getElapsedTime() * 4 + bat.id) * 0.1;
+
+          if (isDeadBattery) {
+            bat.light.intensity = 3.6 + pulseSine * 2.8;
+            bat.light.distance = 15.0;
+            bat.cellMat.emissiveIntensity = 2.0 + pulseSine * 1.5;
+
+            bat.aura.visible = true;
+            const auraScale = 1.4 + pulseSine * 0.8;
+            bat.aura.scale.set(auraScale, auraScale, auraScale);
+            bat.aura.material.opacity = 0.5 + pulseSine * 0.45;
+
+            bat.beam.visible = true;
+            bat.beam.material.opacity = 0.4 + pulseSine * 0.35;
+          } else {
+            bat.light.intensity = 0.9;
+            bat.light.distance = 3.5;
+            bat.cellMat.emissiveIntensity = 0.5;
+
+            bat.aura.visible = true;
+            bat.aura.scale.set(0.9, 0.9, 0.9);
+            bat.aura.material.opacity = 0.15;
+
+            bat.beam.visible = false;
+          }
+
+          const dist = Math.hypot(player.x - bat.mesh.position.x, player.z - bat.mesh.position.z);
+          if (dist < 2.0) nearItem = true;
+          if (dist < 1.1) {
+            bat.collected = true;
+            scene.remove(bat.mesh);
+            batteryLevel = Math.min(100, batteryLevel + BATTERY_RECHARGE_AMOUNT);
+            sound.playBatteryPickup();
+            if (!isFlashlightOn && batteryLevel > 0) {
+              isFlashlightOn = true;
+              flashlight.visible = true;
+              isLighterOn = false;
+              lighterLight.intensity = 0;
+            }
+            updateHUD();
+            updateFlashlightUI();
+          }
+        }
+      });
+
+      const hint = document.getElementById('interaction-hint');
+      if (nearItem) hint.classList.remove('hidden');
+      else hint.classList.add('hidden');
+
+      // 5. Exit Door Trigger Check (Only valid if door is manifested/revealed)
+      if (isExitDoorRevealed && exitDoorGroup) {
+        const distToDoor = Math.hypot(player.x - exitWorldPos.x, player.z - exitWorldPos.z);
+        if (distToDoor < 1.8) {
+          triggerVictory();
+          return;
+        }
+      }
+
+      // 6. Monsters AI Logic & Detection
+      let closestMonsterDist = 999;
+      monsters.forEach(m => {
+        const dist = Math.hypot(player.x - m.x, player.z - m.z);
+        if (dist < closestMonsterDist) closestMonsterDist = dist;
+
+        const detectRange = isFlashlightOn ? 10.5 : (isLighterOn ? 7.0 : 5.2);
+
+        if (dist < detectRange) {
+          if (!m.alerted) {
+            m.alerted = true;
+            if (m.ghostType === 'thai_dancer') {
+              sound.playThaiGhostSound();
+            } else {
+              sound.playMonsterRoar(m.soundPitch);
+            }
+            updateHUD();
+          }
+        } else if (dist > 16.0) {
+          if (m.alerted) {
+            m.alerted = false;
+            updateHUD();
+          }
+        }
+
+        let targetX, targetZ, mSpeed;
+        if (m.alerted) {
+          targetX = player.x;
+          targetZ = player.z;
+          mSpeed = m.speedChase;
+        } else {
+          const wp = m.patrolPoints[m.currentPoint];
+          targetX = wp.x;
+          targetZ = wp.z;
+          mSpeed = m.speedPatrol;
+
+          const wpDist = Math.hypot(wp.x - m.x, wp.z - m.z);
+          if (wpDist < 1.2) {
+            m.currentPoint = (m.currentPoint + 1) % m.patrolPoints.length;
+          }
+        }
+
+        const mAngle = Math.atan2(targetZ - m.z, targetX - m.x);
+        const mx = Math.cos(mAngle) * mSpeed * dt;
+        const mz = Math.sin(mAngle) * mSpeed * dt;
+
+        if (!checkCollision(m.x + mx, m.z, 0.4)) m.x += mx;
+        if (!checkCollision(m.x, m.z + mz, 0.4)) m.z += mz;
+
+        if (m.group) {
+          m.group.position.set(m.x, 0, m.z);
+          if (!m.isSprite) {
+            m.group.rotation.y = -mAngle + Math.PI / 2;
+            m.group.position.y = Math.sin(clock.getElapsedTime() * 12 + m.soundPitch) * 0.08;
+          } else {
+            const jitterX = (Math.random() - 0.5) * (m.alerted ? 0.09 : 0.02);
+            const floatBob = Math.sin(clock.getElapsedTime() * (m.ghostType === 'thai_dancer' ? 8 : 14)) * 0.12;
+            m.group.position.x = m.x + jitterX;
+            m.group.position.y = floatBob;
+          }
+        }
+
+        if (dist < 1.0) {
+          triggerGameOver(m);
+        }
+      });
+
+      // 7. Dynamic Chase & Suspense Horror Music
+      const anyAlerted = monsters.some(m => m.alerted);
+      const monsterDangerProximity = Math.max(0, Math.min(1.0, (14.0 - closestMonsterDist) / 10.0));
+      sound.updateChaseMusic(anyAlerted, monsterDangerProximity);
+
+      // 8. Real-Time Heart Rate
+      if (anyAlerted) {
+        targetBPM = 175;
+      } else if (closestMonsterDist < 4.5) {
+        targetBPM = 150;
+      } else if (closestMonsterDist < 9.0) {
+        const proximityT = 1.0 - (closestMonsterDist - 4.5) / 4.5;
+        targetBPM = 100 + proximityT * 35;
+      } else if (closestMonsterDist < 15.0) {
+        const proximityT = 1.0 - (closestMonsterDist - 9.0) / 6.0;
+        targetBPM = 75 + proximityT * 20;
+      } else {
+        targetBPM = 70 + Math.sin(clock.getElapsedTime() * 0.5) * 3;
+      }
+
+      currentBPM += (targetBPM - currentBPM) * Math.min(1.0, 3.5 * dt);
+
+      const beatsPerSec = currentBPM / 60;
+      ecgPhase += beatsPerSec * dt;
+
+      if (ecgPhase >= 0.39 && !ecgBeatTriggered) {
+        sound.playHeartbeat();
+        ecgBeatTriggered = true;
+      }
+
+      if (ecgPhase >= 1.0) {
+        ecgPhase -= 1.0;
+        ecgBeatTriggered = false;
+      }
+
+      const currentVoltage = getECGWave(ecgPhase);
+      ecgDataBuffer.shift();
+      ecgDataBuffer.push(currentVoltage);
+
+      drawECGWaveform();
+      updateHUD();
+    }
+
+    function triggerGameOver(killerMonster) {
+      const killerName = killerMonster ? killerMonster.name : 'The Monster';
+      gameState = 'GAMEOVER';
+      if (document.exitPointerLock) document.exitPointerLock();
+      sound.stopChaseMusicLoop();
+
+      if (killerMonster && killerMonster.ghostType === 'thai_dancer') {
+        sound.playThaiGhostSound();
+      }
+      sound.playJumpscareScream();
+      document.body.classList.add('glitch-flash');
+
+      const svgHolder = document.getElementById('jumpscare-svg-holder');
+      if (killerMonster && killerMonster.ghostType === 'thai_dancer') {
+        svgHolder.innerHTML = `
+          <svg class="w-80 h-96 sm:w-[32rem] sm:h-[38rem] drop-shadow-[0_0_50px_rgba(234,179,8,0.95)]" viewBox="0 0 300 380" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="150,15 130,120 170,120" fill="#facc15" stroke="#78350f" stroke-width="2.5"/>
+            <polygon points="150,75 120,155 180,155" fill="#eab308" stroke="#78350f" stroke-width="2.5"/>
+            <ellipse cx="150" cy="165" rx="55" ry="18" fill="#ca8a04" stroke="#78350f" stroke-width="2"/>
+            <ellipse cx="150" cy="225" rx="48" ry="60" fill="#f8fafc" stroke="#09090b" stroke-width="3"/>
+            <path d="M115 200 Q130 188 142 198" stroke="#000" stroke-width="4.5" fill="none"/>
+            <path d="M158 198 Q170 188 185 200" stroke="#000" stroke-width="4.5" fill="none"/>
+            <ellipse cx="130" cy="214" rx="13" ry="14" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
+            <circle cx="130" cy="214" r="10" fill="#fff"/>
+            <circle cx="130" cy="214" r="3" fill="#000"/>
+            <ellipse cx="170" cy="214" rx="13" ry="14" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
+            <circle cx="170" cy="214" r="10" fill="#fff"/>
+            <circle cx="170" cy="214" r="3" fill="#000"/>
+            <path d="M132 258 Q150 250 168 258 Q150 274 132 258 Z" fill="#b91c1c" stroke="#450a0a" stroke-width="2"/>
+            <ellipse cx="150" cy="325" rx="22" ry="24" fill="#f8fafc" stroke="#020617" stroke-width="2"/>
+            <path d="M148 300 Q148 230 150 190 Q156 240 154 300 Z" fill="#facc15" stroke="#78350f" stroke-width="2.5"/>
+          </svg>
+        `;
+      }
+
+      const jumpscareOverlay = document.getElementById('jumpscare-overlay');
+      jumpscareOverlay.classList.remove('hidden');
+      camera.rotation.z = (Math.random() > 0.5 ? 0.35 : -0.35);
+
+      setTimeout(() => {
+        document.body.classList.remove('glitch-flash');
+        camera.rotation.z = 0;
+        jumpscareOverlay.classList.add('hidden');
+        document.getElementById('gameover-desc').textContent = `${killerName} โผล่กระโจนออกมาจากความมืดและจับตัวคุณได้ทันที! คุณไม่สามารถหนีรอดจากบ้านผีสิงหลังนี้...`;
+        document.getElementById('screen-gameover').classList.remove('hidden');
+      }, 1300);
+    }
+
+    function triggerVictory() {
+      gameState = 'VICTORY';
+      sound.stopChaseMusicLoop();
+      sound.playDoorManifestSound();
+      if (document.exitPointerLock) document.exitPointerLock();
+      const m = String(Math.floor(timerSeconds / 60)).padStart(2, '0');
+      const s = String(timerSeconds % 60).padStart(2, '0');
+      document.getElementById('victory-time').textContent = `${m}:${s}`;
+      document.getElementById('screen-victory').classList.remove('hidden');
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.1);
+      update(dt);
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      if (!camera || !renderer) return;
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // ================= ONLINE MULTIPLAYER =================
+    const socket = typeof io === 'function' ? io() : null;
+    let onlineRoom = null;
+    let onlineHost = false;
+    let onlineStarted = false;
+    const remotePlayers = new Map();
+    let lastNetworkSend = 0;
+
+    function setOnlineError(message) {
+      const el = document.getElementById('online-error');
+      el.textContent = message || '';
+      el.classList.toggle('hidden', !message);
+    }
+
+    function createRemotePlayer(id, data) {
+      if (remotePlayers.has(id)) return remotePlayers.get(id);
+      const group = new THREE.Group();
+      const body = new THREE.Mesh(
+        THREE.CapsuleGeometry ? new THREE.CapsuleGeometry(0.35, 1.0, 4, 8) : new THREE.CylinderGeometry(0.35, 0.35, 1.7, 12),
+        new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x082f49, roughness: 0.8 })
+      );
+      body.position.y = 1.0;
+      group.add(body);
+      const label = document.createElement('div');
+      label.textContent = data?.name || 'เพื่อน';
+      label.style.cssText = 'position:absolute;transform:translate(-50%,-50%);color:#fff;background:rgba(0,0,0,.7);padding:2px 6px;border-radius:6px;font:11px sans-serif;white-space:nowrap;pointer-events:none;';
+      // Use a sprite-like canvas label to keep it in 3D.
+      const canvas = document.createElement('canvas');
+      canvas.width = 256; canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.roundRect?.(4, 8, 248, 48, 10); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 26px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(data?.name || 'เพื่อน', 128, 42);
+      const tex = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+      sprite.scale.set(2.2, 0.55, 1); sprite.position.y = 2.5; group.add(sprite);
+      group.position.set(data?.x ?? 6, 0, data?.z ?? 6);
+      scene.add(group);
+      const obj = { group, name: data?.name || 'เพื่อน', targetX: group.position.x, targetZ: group.position.z, targetYaw: 0 };
+      remotePlayers.set(id, obj);
+      return obj;
+    }
+
+    function removeRemotePlayer(id) {
+      const p = remotePlayers.get(id);
+      if (!p) return;
+      scene.remove(p.group);
+      remotePlayers.delete(id);
+    }
+
+    function startOnlineGame() {
+      if (onlineStarted) return;
+      onlineStarted = true;
+      sound.init();
+      sound.playDrone();
+      document.getElementById('screen-online').classList.add('hidden');
+      document.getElementById('screen-start').classList.add('hidden');
+      document.getElementById('game-hud').classList.remove('hidden');
+      document.getElementById('quick-action-bar').classList.remove('hidden');
+      gameState = 'PLAYING';
+      resetGame();
+      canvasContainer.requestPointerLock();
+    }
+
+    if (socket) {
+      socket.on('roomCreated', data => {
+        onlineRoom = data.code; onlineHost = true;
+        document.getElementById('room-info').classList.remove('hidden');
+        document.getElementById('room-code-display').textContent = data.code;
+        document.getElementById('room-status').textContent = 'ส่งรหัสนี้ให้เพื่อน แล้วรอเพื่อนเข้าห้อง';
+        document.getElementById('room-players').textContent = `ผู้เล่น ${data.players.length}/4`;
+        setOnlineError('');
+      });
+      socket.on('roomUpdate', data => {
+        onlineRoom = data.code; onlineHost = data.host === socket.id;
+        document.getElementById('room-info').classList.remove('hidden');
+        document.getElementById('room-code-display').textContent = data.code;
+        document.getElementById('room-players').textContent = `ผู้เล่น ${data.players.length}/4`;
+        document.getElementById('room-status').textContent = data.players.length >= 2 ? 'มีเพื่อนเข้าห้องแล้ว' : 'กำลังรอเพื่อน...';
+        document.getElementById('btn-online-start').classList.toggle('hidden', !(onlineHost && data.players.length >= 2));
+        data.players.filter(p => p.id !== socket.id).forEach(p => createRemotePlayer(p.id, p));
+      });
+      socket.on('roomError', msg => setOnlineError(msg));
+      socket.on('gameStarted', data => {
+        data.players.filter(p => p.id !== socket.id).forEach(p => createRemotePlayer(p.id, p));
+        startOnlineGame();
+      });
+      socket.on('playerState', data => {
+        const p = createRemotePlayer(data.id, data);
+        p.name = data.name || p.name; p.targetX = data.x; p.targetZ = data.z; p.targetYaw = data.yaw || 0;
+      });
+      socket.on('playerLeft', data => removeRemotePlayer(data.id));
+    }
+
+    document.getElementById('btn-online').addEventListener('click', () => {
+      document.getElementById('screen-start').classList.add('hidden');
+      document.getElementById('screen-online').classList.remove('hidden');
+      setOnlineError(socket ? '' : 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ออนไลน์ได้');
+    });
+    document.getElementById('btn-show-join').addEventListener('click', () => document.getElementById('join-box').classList.remove('hidden'));
+    document.getElementById('btn-create-room').addEventListener('click', () => {
+      if (!socket) return setOnlineError('เซิร์ฟเวอร์ออนไลน์ยังไม่ทำงาน');
+      const name = document.getElementById('online-name').value.trim() || 'Player 1';
+      socket.emit('createRoom', { name });
+    });
+    document.getElementById('btn-join-room').addEventListener('click', () => {
+      if (!socket) return setOnlineError('เซิร์ฟเวอร์ออนไลน์ยังไม่ทำงาน');
+      const code = document.getElementById('room-code-input').value.trim().toUpperCase();
+      const name = document.getElementById('online-name').value.trim() || 'Player';
+      if (code.length !== 6) return setOnlineError('กรอกรหัสห้อง 6 ตัวอักษร');
+      socket.emit('joinRoom', { code, name });
+    });
+    document.getElementById('btn-online-start').addEventListener('click', () => {
+      if (socket && onlineRoom && onlineHost) socket.emit('startGame');
+    });
+    document.getElementById('btn-online-back').addEventListener('click', () => {
+      document.getElementById('screen-online').classList.add('hidden');
+      document.getElementById('screen-start').classList.remove('hidden');
+    });
+
+    // Smoothly render friends and send this player's state.
+    const originalUpdate = update;
+    update = function(dt) {
+      originalUpdate(dt);
+      if (gameState === 'PLAYING' && onlineStarted) {
+        remotePlayers.forEach(p => {
+          p.group.position.x += (p.targetX - p.group.position.x) * Math.min(1, dt * 12);
+          p.group.position.z += (p.targetZ - p.group.position.z) * Math.min(1, dt * 12);
+          p.group.rotation.y += (p.targetYaw - p.group.rotation.y) * Math.min(1, dt * 12);
+        });
+        const now = performance.now();
+        if (socket && now - lastNetworkSend > 50) {
+          lastNetworkSend = now;
+          socket.emit('playerState', { x: player.x, z: player.z, yaw: player.yaw, pitch: player.pitch });
+        }
+      }
+    };
+
+    document.getElementById('btn-start').addEventListener('click', () => {
+      sound.init();
+      sound.playDrone();
+      document.getElementById('screen-start').classList.add('hidden');
+      document.getElementById('game-hud').classList.remove('hidden');
+      document.getElementById('quick-action-bar').classList.remove('hidden');
+      gameState = 'PLAYING';
+      resetGame();
+      canvasContainer.requestPointerLock();
+    });
+
+    document.getElementById('btn-retry').addEventListener('click', () => {
+      sound.init();
+      document.getElementById('screen-gameover').classList.add('hidden');
+      gameState = 'PLAYING';
+      resetGame();
+      canvasContainer.requestPointerLock();
+    });
+
+    document.getElementById('btn-restart').addEventListener('click', () => {
+      sound.init();
+      document.getElementById('screen-victory').classList.add('hidden');
+      gameState = 'PLAYING';
+      resetGame();
+      canvasContainer.requestPointerLock();
+    });
+
+    window.onload = function () {
+      initScene();
+      animate();
+    };
+  </script>
+</body>
+</html>
+```eof
+
+### สรุปการปรับปรุงระบบประตูทางหนี:
+1. **ซ่อนประตูก่อนเก็บครบ:** เมื่อเริ่มเกม ประตูทางหนีจะถูกซ่อนอยู่ (`exitDoorGroup.visible = false`) ยังไม่ปรากฏให้เห็นหรือหลบหนีได้
+2. **ปลดผนึกเมื่อเก็บครบ 5 ลูก (`revealExitDoor`):**
+   - ประตูทางหนีจะ **ปรากฏขึ้นทันที** พร้อมอนิเมชันขยายตัว ประตูหินโบราณ วงแหวนเวทมนตร์หมุนวน และเสาลำแสงสีเขียวมรกตพุ่งขึ้นสู่เพดาน
+   - มีเสียงแผ่นดินสะเทือนผสมเสียงระฆังโบราณปลดผนึก (`playDoorManifestSound`)
+   - ป้ายแบนเนอร์ขนาดใหญ่เด้งเตือนกลางหน้าจอ: *"DOOR UNLOCKED! ประตูทางหนีได้ปรากฏขึ้นแล้ว!"*
+   - มี **เรดาร์/เข็มทิศชี้ทางหนี** (`🚪 ทางหนี: ⬆ 25m`) ปรากฏบน HUD ด้านบน คอยหมุนบอกทิศทางและระยะทาง ช่วยให้ผู้เล่นวิ่งไปหาประตูได้ทันทีไม่หลงทางครับ!
